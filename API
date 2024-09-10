@@ -1,0 +1,93 @@
+CREATE DATABASE blog;
+USE blog;
+
+CREATE TABLE posts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+<?php
+$host = 'localhost';
+$db = 'blog';
+$user = 'root'; // substitua pelo seu usuário do MySQL
+$pass = ''; // substitua pela sua senha do MySQL
+
+try {
+    $pdo = new PDO("mysql:host=$host;dbname=$db;charset=utf8", $user, $pass);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    echo 'Connection failed: ' . $e->getMessage();
+}
+?>
+<?php
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE');
+header('Access-Control-Allow-Headers: Content-Type');
+
+require 'db.php';
+
+$method = $_SERVER['REQUEST_METHOD'];
+$uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$uri = explode('/', $uri);
+
+if (isset($uri[2]) && is_numeric($uri[2])) {
+    $id = (int) $uri[2];
+} else {
+    $id = null;
+}
+
+switch ($method) {
+    case 'GET':
+        if ($id) {
+            $stmt = $pdo->prepare('SELECT * FROM posts WHERE id = ?');
+            $stmt->execute([$id]);
+            $post = $stmt->fetch(PDO::FETCH_ASSOC);
+            echo json_encode($post);
+        } else {
+            $stmt = $pdo->query('SELECT * FROM posts');
+            $posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode($posts);
+        }
+        break;
+
+    case 'POST':
+        $data = json_decode(file_get_contents('php://input'), true);
+        $stmt = $pdo->prepare('INSERT INTO posts (title, content) VALUES (?, ?)');
+        $stmt->execute([$data['title'], $data['content']]);
+        echo json_encode(['id' => $pdo->lastInsertId()]);
+        break;
+
+    case 'PUT':
+        if ($id) {
+            $data = json_decode(file_get_contents('php://input'), true);
+            $stmt = $pdo->prepare('UPDATE posts SET title = ?, content = ? WHERE id = ?');
+            $stmt->execute([$data['title'], $data['content'], $id]);
+            echo json_encode(['status' => 'success']);
+        } else {
+            http_response_code(400);
+            echo json_encode(['error' => 'ID is required for updating']);
+        }
+        break;
+
+    case 'DELETE':
+        if ($id) {
+            $stmt = $pdo->prepare('DELETE FROM posts WHERE id = ?');
+            $stmt->execute([$id]);
+            echo json_encode(['status' => 'deleted']);
+        } else {
+            http_response_code(400);
+            echo json_encode(['error' => 'ID is required for deletion']);
+        }
+        break;
+
+    default:
+        http_response_code(405);
+        echo json_encode(['error' => 'Method not allowed']);
+        break;
+}
+?>
+curl -X POST http://localhost/api.php -H "Content-Type: application/json" -d '{"title": "My Post", "content": "This is my post content."}'
+curl -X PUT http://localhost/api.php/1 -H "Content-Type: application/json" -d '{"title": "Updated Title", "content": "Updated content."}'
+curl -X DELETE http://localhost/api.php/1
